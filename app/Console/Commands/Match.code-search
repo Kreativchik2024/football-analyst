@@ -1,0 +1,12 @@
+# Query: Match
+# Including: ./football-analyst
+
+Результаты: 6 - Файлы 2
+
+football-analyst\app\Services\SportmonksService.php:
+  42:     public function getMatchesByDate(string $date)
+  47:     public function getOddsByMatch(int $matchId)
+  49:         return $this->request("/odds/fixture/{$matchId}");
+
+football-analyst\database\migrations\2026_04_18_190207_create_value_bets_table.php:
+  13:             $table->foreignId('fixt')->constrained('matches')->onDelete('cascade');
