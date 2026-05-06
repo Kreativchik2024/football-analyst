@@ -11,6 +11,9 @@ use App\Http\Controllers\FixtureController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\AiPredictionController;
 
+use App\Http\Controllers\CapperCornerController;
+
+
 /*
 |--------------------------------------------------------------------------
 | Главная страница
@@ -133,10 +136,16 @@ Route::get('/test-video', function () {
 |--------------------------------------------------------------------------
 */
 
+
 use App\Services\ApiFootballService;
 
 Route::get('/fetch-bookmakers', function (ApiFootballService $api) {
     $data = $api->getBookmakers();         // теперь это массив
     return response()->json($data);
 });
+
+Route::get('/capper-corner', [CapperCornerController::class, 'index'])->name('capper.corner');
+Route::post('/capper-corner/bet', [CapperCornerController::class, 'placeBet'])
+    ->middleware('auth')
+    ->name('capper.bet');
 require __DIR__.'/auth.php';

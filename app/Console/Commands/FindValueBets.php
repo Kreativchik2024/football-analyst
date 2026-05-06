@@ -7,6 +7,8 @@ use App\Models\Prediction;
 use App\Models\ValueBet;
 use App\Models\Odd;
 use App\Models\Bookmaker;
+use App\Models\AiBalance;
+use App\Models\UserPrediction;
 use App\Services\ApiFootballService;
 use App\Services\Agents\MarketPredictionAgent;
 use App\Services\Agents\MlPredictionAgent;
@@ -20,7 +22,7 @@ use Carbon\Carbon;
 class FindValueBets extends Command
 {
     protected $signature = 'bets:find-value';
-    protected $description = 'Find value bets using ensemble predictions and generate explanations via OpenAI';
+    protected $description = 'Find value bets using ensemble predictions across multiple markets and generate explanations via OpenAI';
 
     protected ApiFootballService $api;
     protected MarketPredictionAgent $marketAgent;
@@ -29,6 +31,9 @@ class FindValueBets extends Command
     protected NewsPredictionAgent $newsAgent;
     protected EnsembleOrchestrator $orchestrator;
     protected OpenAiService $openai;
+
+    // Поддерживаемые рынки
+    protected array $markets = ['1x2', 'over_under_2.5', 'btts'];
 
     public function __construct(
         ApiFootballService $api,
@@ -61,7 +66,7 @@ class FindValueBets extends Command
 
         $this->info('Found ' . $fixtures->count() . ' upcoming fixtures.');
 
-        // Регистрируем всех агентов в оркестраторе (один раз перед циклом)
+        // Регистрируем агентов в оркестраторе
         $this->orchestrator->registerAgent('api_football', fn($f) => $this->fetchPrediction($f));
         $this->orchestrator->registerAgent('market',       fn($f) => $this->marketAgent->predict($f));
         $this->orchestrator->registerAgent('ml_model',     fn($f) => $this->mlAgent->predict($f));
@@ -73,36 +78,50 @@ class FindValueBets extends Command
         foreach ($fixtures as $fixture) {
             $this->line("Processing: {$fixture->homeTeam->name} vs {$fixture->awayTeam->name}");
 
-            // 1. Получаем консенсусный прогноз от оркестратора
+            // 1. Консенсусный прогноз
             $ensemble = $this->orchestrator->predict($fixture);
-
             if (!$ensemble) {
                 $this->warn("  No ensemble prediction available, skipping.");
                 continue;
             }
-
             $this->info("  ✓ Ensemble prediction created");
 
-            // 2. Лучшие коэффициенты
-            $bestOdds = $this->fetchBestOdds($fixture);
-            if (empty($bestOdds)) {
-                $this->warn("  No odds available, skipping.");
-                continue;
+            // 2. Обрабатываем каждый рынок
+            foreach ($this->markets as $market) {
+                $this->processMarket($fixture, $ensemble, $market, $valueBetsFound);
             }
+        }
 
-            // 3. Поиск валуйных ставок на основе консенсус-прогноза
-            foreach (['home', 'draw', 'away'] as $outcome) {
-                $prob = $ensemble->{$outcome . '_probability'};
-                $odd = $bestOdds[$outcome]['value'] ?? null;
-                if (!$odd || $prob <= 0) continue;
+        $this->info("✅ Done. Found {$valueBetsFound} value bets.");
+    }
 
-                $impliedProb = 1 / $odd;
-                $ev = ($prob * $odd) - 1;
-                $edge = ($prob - $impliedProb) * 100;
+    /**
+     * Обрабатывает поиск валуйных ставок для одного рынка.
+     */
+    protected function processMarket(Fixture $fixture, $ensemble, string $market, int &$valueBetsFound): void
+    {
+        $bestOdds = $this->fetchBestOdds($fixture, $market);
+        if (empty($bestOdds)) {
+            $this->warn("  No odds for {$market}, skipping.");
+            return;
+        }
 
-                if ($ev > 0) {
-                    // === Генерация объяснения через OpenAI ===
-                    $explanation = null;
+        foreach ($bestOdds as $outcome => $oddData) {
+            $odd = $oddData['value'] ?? $oddData;
+            $oddId = $oddData['odd_id'] ?? 0;
+            if (!$odd || $odd <= 0) continue;
+
+            $prob = $this->getMarketProbability($fixture, $ensemble, $market, $outcome);
+            if (!$prob || $prob <= 0) continue;
+
+            $impliedProb = 1 / $odd;
+            $ev = ($prob * $odd) - 1;
+            $edge = ($prob - $impliedProb) * 100;
+
+            if ($ev > 0) {
+                // Генерация объяснения (только для 1x2)
+                $explanation = null;
+                if ($market === '1x2') {
                     try {
                         $explanation = $this->openai->ask(
                             "Ты футбольный аналитик. Объясни на русском языке, почему ставка на исход '{$outcome}' выгодна.",
@@ -114,22 +133,68 @@ class FindValueBets extends Command
                     } catch (\Exception $e) {
                         $this->warn("  ⚠️ Не удалось получить объяснение от OpenAI: " . $e->getMessage());
                     }
-
-                    $this->saveValueBet(
-                        $fixture,
-                        $ensemble,   // передаём EnsemblePrediction (имеет те же поля вероятностей)
-                        $bestOdds[$outcome]['odd_id'],
-                        $outcome,
-                        $ev,
-                        $edge,
-                        $explanation
-                    );
-                    $valueBetsFound++;
                 }
+
+                // Сохраняем ValueBet
+                $this->saveValueBet($fixture, $ensemble, $oddId, $outcome, $ev, $edge, $explanation, $market);
+
+                // AI ставит 5% от баланса
+                $aiBalance = AiBalance::getBalance();
+                $aiStake = round($aiBalance * 0.05, 2);
+                if ($aiStake > 0) {
+                    AiBalance::updateBalance(-$aiStake);
+                    UserPrediction::create([
+                        'user_id'    => null,
+                        'fixture_id' => $fixture->id,
+                        'market'     => $market,
+                        'outcome'    => $outcome,
+                        'stake'      => $aiStake,
+                        'odds'       => $odd,
+                        'status'     => 'pending',
+                    ]);
+                    $this->info("  🤖 AI разместил ставку {$aiStake} на {$outcome} (market: {$market})");
+                }
+
+                $valueBetsFound++;
             }
         }
+    }
 
-        $this->info("✅ Done. Found {$valueBetsFound} value bets.");
+    /**
+     * Получает вероятность исхода для конкретного рынка.
+     */
+    protected function getMarketProbability(Fixture $fixture, $ensemble, string $market, string $outcome): ?float
+    {
+        return match ($market) {
+            '1x2' => $ensemble?->{$outcome . '_probability'},
+            'over_under_2.5' => $this->getOverUnderProbability($fixture, $outcome),
+            'btts' => $this->getBttsProbability($fixture, $outcome),
+            default => null,
+        };
+    }
+
+    protected function getOverUnderProbability(Fixture $fixture, string $outcome): ?float
+    {
+        $response = $this->api->getPredictions($fixture->external_id);
+        if (!$response->successful()) return null;
+
+        $data = $response->json('response')[0]['predictions']['over_under'] ?? null;
+        if (!$data) return null;
+
+        $prob = $data[$outcome === 'over' ? 'over' : 'under'] ?? null;
+        return is_numeric($prob) ? (float)$prob / 100 : null;
+    }
+
+    protected function getBttsProbability(Fixture $fixture, string $outcome): ?float
+    {
+        $response = $this->api->getPredictions($fixture->external_id);
+        if (!$response->successful()) return null;
+
+        $data = $response->json('response')[0]['predictions']['btts'] ?? null;
+        if (!$data) return null;
+
+        $prob = $data[$outcome === 'yes' ? 'yes' : 'no'] ?? null;
+        return is_numeric($prob) ? (float)$prob / 100 : null;
     }
 
     protected function fetchPrediction(Fixture $fixture): ?Prediction
@@ -164,11 +229,13 @@ class FindValueBets extends Command
         ]);
     }
 
-    protected function fetchBestOdds(Fixture $fixture): array
+    protected function fetchBestOdds(Fixture $fixture, string $market): array
     {
         $odds = Odd::where('fixture_id', $fixture->id)
-            ->where('market', '1x2')
-            ->get();
+            ->where('market', $market)
+            ->get()
+            ->groupBy('outcome')
+            ->map(fn($group) => $group->max('value'));
 
         if ($odds->isEmpty()) {
             $response = $this->api->getOdds($fixture->external_id);
@@ -177,17 +244,14 @@ class FindValueBets extends Command
             $data = $response->json('response')[0] ?? [];
             $bookmakersData = $data['bookmakers'] ?? [];
             $this->saveOddsFromApi($fixture, $bookmakersData);
-            $odds = Odd::where('fixture_id', $fixture->id)->where('market', '1x2')->get();
+            $odds = Odd::where('fixture_id', $fixture->id)
+                ->where('market', $market)
+                ->get()
+                ->groupBy('outcome')
+                ->map(fn($group) => $group->max('value'));
         }
 
-        $best = ['home' => null, 'draw' => null, 'away' => null];
-        foreach ($odds as $odd) {
-            $outcome = $odd->outcome;
-            if (!isset($best[$outcome]) || $odd->value > $best[$outcome]['value']) {
-                $best[$outcome] = ['value' => $odd->value, 'odd_id' => $odd->id];
-            }
-        }
-        return $best;
+        return $odds->toArray();
     }
 
     protected function saveOddsFromApi(Fixture $fixture, array $bookmakersData): void
@@ -199,7 +263,6 @@ class FindValueBets extends Command
             );
 
             foreach ($bookmakerData['bets'] ?? [] as $bet) {
-                if ($bet['name'] !== 'Match Winner') continue;
                 foreach ($bet['values'] ?? [] as $outcomeData) {
                     $outcome = $this->mapOutcome($outcomeData['value']);
                     if (!$outcome) continue;
@@ -208,7 +271,7 @@ class FindValueBets extends Command
                         [
                             'fixture_id'   => $fixture->id,
                             'bookmaker_id' => $bookmaker->id,
-                            'market'       => '1x2',
+                            'market'       => $bet['name'] ?? '1x2',
                             'outcome'      => $outcome,
                         ],
                         [
@@ -227,37 +290,43 @@ class FindValueBets extends Command
             'Home' => 'home',
             'Draw' => 'draw',
             'Away' => 'away',
+            'Over' => 'over',
+            'Under' => 'under',
+            'Yes' => 'yes',
+            'No' => 'no',
             default => null,
         };
     }
 
     /**
-     * Сохраняет валуйную ставку с объяснением.
-     * Принимает объект с полями вероятностей (Prediction или EnsemblePrediction).
+     * Сохраняет валуйную ставку с объяснением и типом рынка.
      */
     protected function saveValueBet(
         Fixture $fixture,
         $prediction,
         int $oddId,
-        string $betType,
+        string $outcome,
         float $ev,
         float $edge,
-        ?string $explanation = null
+        ?string $explanation = null,
+        string $market = '1x2'
     ): void {
         ValueBet::updateOrCreate(
             [
-                'fixture_id'    => $fixture->id,
-                'odd_id'        => $oddId,
-                'bet_type'      => $betType,
+                'fixture_id' => $fixture->id,
+                'market'     => $market,
+                'outcome'    => $outcome,
             ],
             [
-                'prediction_id' => $prediction->id ?? null,
-                'expected_value'=> $ev,
-                'edge_percent'  => $edge,
-                'explanation'   => $explanation,
-                'status'        => 'pending',
+                'prediction_id'  => $prediction->id ?? null,
+                'odd_id'         => $oddId,
+                'expected_value' => $ev,
+                'edge_percent'   => $edge,
+                'explanation'    => $explanation,
+                'status'         => 'pending',
+                'type'           => 'prematch',
             ]
         );
-        $this->info("  💰 Value bet found: {$betType} @ EV = " . round($ev, 3));
+        $this->info("  💰 Value bet found: {$outcome} (market: {$market}) @ EV = " . round($ev, 3));
     }
 }

@@ -90,4 +90,16 @@ class ApiFootballService
 {
     return $this->request('/injuries', $params);
 }
+
+public function getLiveFixtures(array $params = [])
+{
+    return $this->request('/fixtures', array_merge(['live' => 'all'], $params));
+}
+
+public function getLiveOdds(int $fixtureId)
+{
+    return $this->request('/odds/live', ['fixture' => $fixtureId]);
+}
+
+// getFixtureStatistics уже есть, он работает и для live-матчей
 }

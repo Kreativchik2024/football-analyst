@@ -21,6 +21,10 @@
                     <a href="{{ route('fixtures.past') }}" class="nav-link {{ request()->routeIs('fixtures.past') ? 'active' : '' }}">
                         {{ __('ui.past') }}
                     </a>
+                    {{-- НОВАЯ ССЫЛКА --}}
+                    <a href="{{ route('capper.corner') }}" class="nav-link {{ request()->routeIs('capper.corner') ? 'active' : '' }}">
+                        🎯 Уголок капера
+                    </a>
 
                     @auth
                         @if(Auth::user()->canAccessAiPredictions())

@@ -72,4 +72,43 @@ class Fixture extends Model
 {
     return $this->hasMany(MatchStatistic::class);
 }
+
+    // ========== Scopes ==========
+
+    /**
+     * Фильтр по предстоящим матчам
+     */
+    public function scopeUpcoming($query)
+    {
+        return $query->where('starting_at', '>=', now())
+            ->whereIn('status', ['NS', 'TBD', 'PST'])
+            ->orderBy('starting_at');
+    }
+
+    /**
+     * Фильтр по живым матчам
+     */
+    public function scopeLive($query)
+    {
+        return $query->whereIn('status', ['LIVE', '1H', 'HT', '2H', 'ET'])
+            ->orderBy('starting_at');
+    }
+
+    /**
+     * Фильтр по завершённым матчам
+     */
+    public function scopeFinished($query)
+    {
+        return $query->whereIn('status', ['FT', 'AET', 'PEN'])
+            ->orderBy('starting_at', 'desc');
+    }
+
+    /**
+     * Фильтр по матчам в следующие N дней
+     */
+    public function scopeNextDays($query, int $days = 7)
+    {
+        return $query->where('starting_at', '>=', now())
+            ->where('starting_at', '<=', now()->addDays($days));
+    }
 }

@@ -29,13 +29,36 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
-    public function canAccessAiPredictions(): bool
-{
-    return in_array($this->role, ['super_admin', 'admin', 'user_plus']);
-}
 
-public function isAdmin(): bool
-{
-    return in_array($this->role, ['admin', 'super_admin']);
-}
+    // ========== Методы доступа ==========
+
+    public function canAccessAiPredictions(): bool
+    {
+        return in_array($this->role, ['super_admin', 'admin', 'user_plus']);
+    }
+
+    public function isAdmin(): bool
+    {
+        return in_array($this->role, ['admin', 'super_admin']);
+    }
+
+    // ========== Отношения ==========
+
+    public function predictions()
+    {
+        return $this->hasMany(UserPrediction::class);
+    }
+
+    public function balance()
+    {
+        return $this->hasOne(UserBalance::class)->withDefault(['balance' => 100000]);
+    }
+
+    /**
+     * Получить баланс через отношение (без N+1)
+     */
+    public function getBalanceResult()
+    {
+        return $this->balance()->first()?->balance ?? 100000;
+    }
 }
