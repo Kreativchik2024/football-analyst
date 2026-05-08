@@ -4,10 +4,10 @@
             © {{ date('Y') }} <strong>DeepOdds</strong> — AI-аналитика футбольных ставок.
         <br>
         <span class="text-muted small">
-            Дипломный проект разработан специально для учебных целей.
+            Стартап
         </span>
         <div class="mt-2">
-            <a href="https://github.com/your-profile" target="_blank" class="text-muted small me-2 text-decoration-none" title="GitHub">
+            <a href="https://github.com/Kreativchik2024" target="_blank" class="text-muted small me-2 text-decoration-none" title="GitHub">
                 <i class="bi bi-github"></i> GitHub
             </a>
             <a href="mailto:your@email.com" class="text-muted small text-decoration-none" title="Email">
