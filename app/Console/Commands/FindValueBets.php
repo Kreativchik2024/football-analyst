@@ -99,66 +99,65 @@ class FindValueBets extends Command
      * Обрабатывает поиск валуйных ставок для одного рынка.
      */
     protected function processMarket(Fixture $fixture, $ensemble, string $market, int &$valueBetsFound): void
-    {
-        $bestOdds = $this->fetchBestOdds($fixture, $market);
-        if (empty($bestOdds)) {
-            $this->warn("  No odds for {$market}, skipping.");
-            return;
-        }
+{
+    $bestOdds = $this->fetchBestOdds($fixture, $market);
+    if (empty($bestOdds)) {
+        $this->warn("  No odds for {$market}, skipping.");
+        return;
+    }
 
-        foreach ($bestOdds as $outcome => $oddData) {
-            $odd = $oddData['value'] ?? $oddData;
-            $oddId = $oddData['odd_id'] ?? 0;
-            if (!$odd || $odd <= 0) continue;
+    foreach ($bestOdds as $outcome => $oddData) {
+        $odd = $oddData['value'] ?? $oddData;
+        $oddId = $oddData['odd_id'] ?? 0;
+        if (!$odd || $odd <= 0) continue;
 
-            $prob = $this->getMarketProbability($fixture, $ensemble, $market, $outcome);
-            if (!$prob || $prob <= 0) continue;
+        $prob = $this->getMarketProbability($fixture, $ensemble, $market, $outcome);
+        if (!$prob || $prob <= 0) continue;
 
-            $impliedProb = 1 / $odd;
-            $ev = ($prob * $odd) - 1;
-            $edge = ($prob - $impliedProb) * 100;
+        $impliedProb = 1 / $odd;
+        $ev = ($prob * $odd) - 1;
+        $edge = ($prob - $impliedProb) * 100;
 
-            if ($ev > 0) {
-                // Генерация объяснения (только для 1x2)
-                $explanation = null;
-                if ($market === '1x2') {
-                    try {
-                        $explanation = $this->openai->ask(
-                            "Ты футбольный аналитик. Объясни на русском языке, почему ставка на исход '{$outcome}' выгодна.",
-                            "Матч: {$fixture->homeTeam->name} против {$fixture->awayTeam->name}. " .
-                            "Вероятность по консенсус-прогнозу: " . round($prob * 100, 1) . "%. " .
-                            "Коэффициент букмекера: {$odd}. " .
-                            "Ожидаемая ценность (EV): " . round($ev, 3)
-                        );
-                    } catch (\Exception $e) {
-                        $this->warn("  ⚠️ Не удалось получить объяснение от OpenAI: " . $e->getMessage());
-                    }
+        if ($ev > 0) {
+            // Генерация объяснения через DeepSeek
+            $explanation = null;
+            if ($market === '1x2') {
+                try {
+                    $explanation = $this->deepseek->ask(   // ← замена OpenAiService на DeepSeekService
+                        "Ты футбольный аналитик. Объясни на русском языке, почему ставка на исход '{$outcome}' выгодна.",
+                        "Матч: {$fixture->homeTeam->name} против {$fixture->awayTeam->name}. " .
+                        "Вероятность по консенсус-прогнозу: " . round($prob * 100, 1) . "%. " .
+                        "Коэффициент букмекера: {$odd}. " .
+                        "Ожидаемая ценность (EV): " . round($ev, 3)
+                    );
+                } catch (\Exception $e) {
+                    $this->warn("  ⚠️ Не удалось получить объяснение от DeepSeek: " . $e->getMessage());
                 }
-
-                // Сохраняем ValueBet
-                $this->saveValueBet($fixture, $ensemble, $oddId, $outcome, $ev, $edge, $explanation, $market);
-
-                // AI ставит 5% от баланса
-                $aiBalance = AiBalance::getBalance();
-                $aiStake = round($aiBalance * 0.05, 2);
-                if ($aiStake > 0) {
-                    AiBalance::updateBalance(-$aiStake);
-                    UserPrediction::create([
-                        'user_id'    => null,
-                        'fixture_id' => $fixture->id,
-                        'market'     => $market,
-                        'outcome'    => $outcome,
-                        'stake'      => $aiStake,
-                        'odds'       => $odd,
-                        'status'     => 'pending',
-                    ]);
-                    $this->info("  🤖 AI разместил ставку {$aiStake} на {$outcome} (market: {$market})");
-                }
-
-                $valueBetsFound++;
             }
+
+            $this->saveValueBet($fixture, $ensemble, $oddId, $outcome, $ev, $edge, $explanation, $market);
+
+            // AI ставит 5% от баланса
+            $aiBalance = AiBalance::getBalance();
+            $aiStake = round($aiBalance * 0.05, 2);
+            if ($aiStake > 0) {
+                AiBalance::updateBalance(-$aiStake);
+                UserPrediction::create([
+                    'user_id'    => null,
+                    'fixture_id' => $fixture->id,
+                    'market'     => $market,
+                    'outcome'    => $outcome,
+                    'stake'      => $aiStake,
+                    'odds'       => $odd,
+                    'status'     => 'pending',
+                ]);
+                $this->info("  🤖 AI разместил ставку {$aiStake} на {$outcome} (market: {$market})");
+            }
+
+            $valueBetsFound++;
         }
     }
+}
 
     /**
      * Получает вероятность исхода для конкретного рынка.

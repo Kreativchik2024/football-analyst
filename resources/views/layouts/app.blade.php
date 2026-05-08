@@ -10,6 +10,7 @@
     @stack('styles')
 </head>
 <body class="font-sans antialiased d-flex flex-column min-vh-100" style="background: #f8f9fa;">
+    <x-chat-widget />
     <x-header />
 
     <main class="flex-grow-1 d-flex">

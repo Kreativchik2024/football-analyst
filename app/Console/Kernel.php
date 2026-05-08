@@ -14,6 +14,9 @@ class Kernel extends ConsoleKernel
     {
         // Загрузка новостей ESPN каждый час
         $schedule->command('fetch:espn-news')->hourly();
+        
+        // Ежедневная сводка ассистента
+        $schedule->command('briefing:generate')->dailyAt('08:00');
     }
 
     /**

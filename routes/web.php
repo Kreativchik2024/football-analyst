@@ -12,6 +12,7 @@ use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\AiPredictionController;
 
 use App\Http\Controllers\CapperCornerController;
+ use App\Http\Controllers\ChatController;
 
 
 /*
@@ -144,8 +145,22 @@ Route::get('/fetch-bookmakers', function (ApiFootballService $api) {
     return response()->json($data);
 });
 
-Route::get('/capper-corner', [CapperCornerController::class, 'index'])->name('capper.corner');
+/*
+|--------------------------------------------------------------------------
+| Уголок капера (только для авторизованных)
+|--------------------------------------------------------------------------
+*/
+Route::get('/capper-corner', [CapperCornerController::class, 'index'])
+    ->middleware('auth')
+    ->name('capper.corner');
+
 Route::post('/capper-corner/bet', [CapperCornerController::class, 'placeBet'])
     ->middleware('auth')
     ->name('capper.bet');
+   
+
+Route::post('/chat/ask', [ChatController::class, 'ask'])->name('chat.ask');
+Route::get('/chat/test', function () {
+    return 'Chat route works';
+});
 require __DIR__.'/auth.php';

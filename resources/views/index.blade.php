@@ -109,19 +109,45 @@
                     <h6 class="text-danger small fw-bold mb-0">🎬 Видео</h6>
                 </div>
                 <div class="card-body p-2 d-flex align-items-center justify-content-center" style="background: #000;">
-                    <div class="ratio ratio-16x9 w-100" style="max-height: 100%;">
-                        @if(!empty($embedCode))
-                            {!! $embedCode !!}
-                        @else
-                            <iframe width="100%" height="100%" 
-                                    src="https://www.youtube.com/embed/videoseries?list=PLQ_voP4Q3cfc-2j2QfHkC-5FjYJZ9p0vO" 
-                                    frameborder="0" allowfullscreen>
-                            </iframe>
-                        @endif
-                    </div>
+            <div class="ratio ratio-16x9 overflow-hidden rounded-3" style="background: #000; border-radius: 12px;">
+    @if(!empty($embedCode))
+        {{-- Для пользовательского видео (может быть Rutube) --}}
+        {!! $embedCode !!}
+    @else
+        <iframe src="https://www.youtube.com/embed/videoseries?list=PLQ_voP4Q3cfc-2j2QfHkC-5FjYJZ9p0vO&autoplay=1&mute=1" 
+                frameborder="0" allow="autoplay; encrypted-media" allowfullscreen>
+        </iframe>
+    @endif
+</div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+@push('scripts')
+<script>
+    // Функция для автозапуска видео через API Rutube
+    function autoPlayRutube() {
+        // Ищем iframe с rutube
+        const iframe = document.querySelector('iframe[src*="rutube.ru"]');
+        if (iframe && iframe.contentWindow) {
+            // Отправляем сообщение плееру: начать воспроизведение с muted
+            iframe.contentWindow.postMessage(JSON.stringify({
+                type: 'player:play',
+                data: {
+                    mute: true
+                }
+            }), '*');
+        }
+    }
+
+    // Пытаемся запустить после полной загрузки страницы
+    window.addEventListener('load', function() {
+        // Rutube может инициализироваться с задержкой, поэтому пробуем несколько раз
+        setTimeout(autoPlayRutube, 1000);
+        setTimeout(autoPlayRutube, 2000);
+        setTimeout(autoPlayRutube, 3000);
+    });
+</script>
+@endpush
 @endsection
