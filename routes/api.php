@@ -1,21 +1,22 @@
 <?php
 
-use App\Models\News;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\MLController;
 
-Route::get('/news/load-more', function (Request $request) {
-    $page = $request->input('page', 1);
-    $perPage = 6;
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+*/
 
-    $news = News::orderBy('published_at', 'desc')
-        ->skip(6 + ($page - 1) * $perPage)
-        ->take($perPage)
-        ->get();
+Route::get('/user', function (Request $request) {
+    return $request->user();
+})->middleware('auth:sanctum');
 
-    $hasMore = $news->count() === $perPage;
-
-    return response()->json([
-        'html' => view('partials.news_cards', compact('news'))->render(),
-        'has_more' => $hasMore,
-    ]);
-})->name('api.news.loadMore');
+// ML маршруты (без префикса /api, он добавляется автоматически)
+Route::post('/ml/store-prediction', [MLController::class, 'storePrediction']);
+Route::get('/ml/status', [MLController::class, 'status']);
+Route::get('/ml/training-data', [MLController::class, 'getTrainingData']);
+Route::post('/ml/features', [MLController::class, 'getFeatures']);
+Route::post('/ml/upcoming-features', [MLController::class, 'getUpcomingFeatures']);

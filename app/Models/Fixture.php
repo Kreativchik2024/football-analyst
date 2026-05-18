@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Fixture extends Model
 {
@@ -48,14 +49,36 @@ class Fixture extends Model
         return $this->belongsTo(Team::class, 'away_team_id');
     }
 
-   public function odds(): HasMany
-{
-    return $this->hasMany(Odd::class);
-}
+    public function odds(): HasMany
+    {
+        return $this->hasMany(Odd::class);
+    }
 
     public function predictions(): HasMany
     {
         return $this->hasMany(Prediction::class);
+    }
+
+    // ⭐ ДОБАВЬТЕ ЭТУ СВЯЗЬ - для ансамблевого прогноза (одна запись на матч)
+    public function ensemblePrediction(): HasOne
+    {
+        return $this->hasOne(Prediction::class)->where('agent_type', 'ml_ensemble');
+    }
+
+    // Дополнительные удобные связи для разных типов прогнозов
+    public function apiPrediction(): HasOne
+    {
+        return $this->hasOne(Prediction::class)->where('agent_type', 'api_football');
+    }
+
+    public function xgboostPrediction(): HasOne
+    {
+        return $this->hasOne(Prediction::class)->where('agent_type', 'xgboost');
+    }
+
+    public function orchestratorPrediction(): HasOne
+    {
+        return $this->hasOne(Prediction::class)->where('agent_type', 'orchestrator');
     }
 
     public function valueBets(): HasMany
@@ -63,21 +86,18 @@ class Fixture extends Model
         return $this->hasMany(ValueBet::class);
     }
 
-   public function matchEvents(): HasMany
-{
-    return $this->hasMany(MatchEvent::class);
-}
+    public function matchEvents(): HasMany
+    {
+        return $this->hasMany(MatchEvent::class);
+    }
 
-  public function matchStatistics(): HasMany
-{
-    return $this->hasMany(MatchStatistic::class);
-}
+    public function matchStatistics(): HasMany
+    {
+        return $this->hasMany(MatchStatistic::class);
+    }
 
     // ========== Scopes ==========
 
-    /**
-     * Фильтр по предстоящим матчам
-     */
     public function scopeUpcoming($query)
     {
         return $query->where('starting_at', '>=', now())
@@ -85,30 +105,23 @@ class Fixture extends Model
             ->orderBy('starting_at');
     }
 
-    /**
-     * Фильтр по живым матчам
-     */
     public function scopeLive($query)
     {
         return $query->whereIn('status', ['LIVE', '1H', 'HT', '2H', 'ET'])
             ->orderBy('starting_at');
     }
 
-    /**
-     * Фильтр по завершённым матчам
-     */
     public function scopeFinished($query)
     {
         return $query->whereIn('status', ['FT', 'AET', 'PEN'])
             ->orderBy('starting_at', 'desc');
     }
 
-    /**
-     * Фильтр по матчам в следующие N дней
-     */
     public function scopeNextDays($query, int $days = 7)
     {
         return $query->where('starting_at', '>=', now())
             ->where('starting_at', '<=', now()->addDays($days));
     }
+    // В модели Fixture добавьте:
+
 }

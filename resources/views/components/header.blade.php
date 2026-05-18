@@ -21,10 +21,10 @@
                     <a href="{{ route('fixtures.past') }}" class="nav-link {{ request()->routeIs('fixtures.past') ? 'active' : '' }}">
                         {{ __('ui.past') }}
                     </a>
-                    {{-- НОВАЯ ССЫЛКА --}}
                     <a href="{{ route('capper.corner') }}" class="nav-link {{ request()->routeIs('capper.corner') ? 'active' : '' }}">
                         🎯 Уголок капера
                     </a>
+ 
 
                     @auth
                         @if(Auth::user()->canAccessAiPredictions())
@@ -41,6 +41,14 @@
                             {{ __('ui.ai_predictions') }} 🔒
                         </span>
                     @endauth
+
+                    {{-- Ссылка "О проекте" – доступна всем --}}
+                    <a href="{{ route('about') }}" class="nav-link {{ request()->routeIs('about') ? 'active' : '' }}">
+                        {{ __('О проекте') ?? 'О проекте' }}
+                    </a>
+                                       <a href="{{ route('contact') }}" class="nav-link {{ request()->routeIs('contact') ? 'active' : '' }}">
+    {{ __('Контакты') ?? 'Контакты' }}
+</a>
                 </nav>
             </div>
 

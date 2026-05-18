@@ -10,9 +10,11 @@ use App\Http\Controllers\VideoController;
 use App\Http\Controllers\FixtureController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\AiPredictionController;
-
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CapperCornerController;
  use App\Http\Controllers\ChatController;
+ use App\Http\Controllers\MLController;
+ use App\Http\Controllers\AboutController;
 
 
 /*
@@ -163,4 +165,22 @@ Route::post('/chat/ask', [ChatController::class, 'ask'])->name('chat.ask');
 Route::get('/chat/test', function () {
     return 'Chat route works';
 });
+
+
+Route::get('/contact', [ContactController::class, 'index'])->name('contact');
+
+
+
+Route::get('/about', [AboutController::class, 'index'])->name('about');
+
+// ML Training Data
+Route::get('/api/ml/training-data', [App\Http\Controllers\MLController::class, 'getTrainingData']);
+
+
+
+Route::get('/api/ml/status', [MLController::class, 'status']);
+Route::post('/api/ml/store-prediction', [MLController::class, 'storePrediction']);
+Route::get('/api/ml/training-data', [MLController::class, 'getTrainingData']);
+Route::post('/api/ml/features', [MLController::class, 'getFeatures']);
+Route::post('/api/ml/upcoming-features', [MLController::class, 'getUpcomingFeatures']);
 require __DIR__.'/auth.php';

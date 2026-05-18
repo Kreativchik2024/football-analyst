@@ -13,27 +13,28 @@ use App\Services\ApiFootballService;
 use Illuminate\Console\Command;
 use Carbon\Carbon;
 
-class FetchSeason extends Command
+class FetchWorldCup extends Command
 {
-    protected $signature = 'fetch:season
-                            {season : год начала сезона (2022, 2023, 2024, 2025)}
-                            {--from= : дата начала (Y-m-d)}
-                            {--to= : дата конца (Y-m-d)}
-                            {--leagues= : список ID лиг через запятую}
+    protected $signature = 'fetch:world-cup
+                            {--years= : Годы чемпионатов через запятую (2018,2022,2026)}
                             {--skip-odds : пропустить загрузку коэффициентов}
                             {--skip-events : пропустить загрузку событий}
                             {--skip-statistics : пропустить загрузку статистики}
-                            {--delay=250 : задержка между матчами в миллисекундах}
-                            {--limit=7000 : максимальное количество запросов}';
+                            {--delay=250 : задержка между матчами в мс}
+                            {--limit=7000 : лимит запросов}';
 
-    protected $description = 'Загрузить все матчи и полную статистику для указанного сезона по выбранным лигам (по дням)';
+    protected $description = 'Загрузить все матчи и статистику чемпионатов мира (сборные)';
 
     protected ApiFootballService $api;
 
-    protected array $allLeagueIds = [
-        39, 40, 140, 141, 135, 136, 78, 79, 61, 62,
-        94, 95, 71, 72, 235, 236, 19, 20, 294, 295, 253, 254,
-        1, 2, 3, 4, 13
+    // ID лиги чемпионата мира в API‑Football
+    const WORLD_CUP_LEAGUE_ID = 1;
+
+    // Диапазоны дат для каждого розыгрыша (чтобы не тянуть весь год)
+    protected $worldCupRanges = [
+        2018 => ['from' => '2018-06-14', 'to' => '2018-07-15'],
+        2022 => ['from' => '2022-11-20', 'to' => '2022-12-18'],
+        2026 => ['from' => '2026-06-11', 'to' => '2026-07-19'], // ориентировочно
     ];
 
     public function __construct(ApiFootballService $api)
@@ -44,31 +45,11 @@ class FetchSeason extends Command
 
     public function handle()
     {
-        $season = (int) $this->argument('season');
-        if (!in_array($season, [2022, 2023, 2024, 2025])) {
-            $this->error('Сезон должен быть 2022, 2023, 2024 или 2025');
-            return 1;
-        }
-
-        $leaguesOption = $this->option('leagues');
-        if ($leaguesOption) {
-            $selectedIds = array_map('intval', explode(',', $leaguesOption));
-            $leagueIds = array_intersect($this->allLeagueIds, $selectedIds);
+        $yearsOption = $this->option('years');
+        if ($yearsOption) {
+            $years = array_map('intval', explode(',', $yearsOption));
         } else {
-            $leagueIds = $this->allLeagueIds;
-        }
-
-        if (empty($leagueIds)) {
-            $this->error('Не выбрано ни одной лиги для загрузки.');
-            return 1;
-        }
-
-        $fromDate = $this->option('from');
-        $toDate   = $this->option('to');
-
-        if (!$fromDate && !$toDate && $season == 2022) {
-            $fromDate = '2023-04-01';
-            $toDate   = '2023-07-31';
+            $years = array_keys($this->worldCupRanges);
         }
 
         $skipOdds = $this->option('skip-odds');
@@ -77,29 +58,34 @@ class FetchSeason extends Command
         $delayMs = (int) $this->option('delay');
         $maxRequests = (int) $this->option('limit');
 
-        $this->info("Загрузка сезона {$season}/".($season+1)." для лиг: " . implode(',', $leagueIds));
-        $this->fetchLeagues($leagueIds);
+        $this->info("Загрузка данных о чемпионатах мира для лет: " . implode(', ', $years));
 
         $totalRequests = 0;
+        $leagueId = self::WORLD_CUP_LEAGUE_ID;
 
-        foreach ($leagueIds as $leagueId) {
-            $this->info("Лига ID: {$leagueId}");
+        // Убедимся, что лига "World Cup" существует в БД
+        $this->ensureWorldCupLeague();
 
-            $range = $this->getRange($leagueId, $season, $fromDate, $toDate);
-            if (!$range) {
-                $this->warn("  Нет информации о сезоне, пропускаем");
+        foreach ($years as $year) {
+            if (!isset($this->worldCupRanges[$year])) {
+                $this->warn("Диапазон дат для года {$year} не определён. Пропускаем.");
                 continue;
             }
 
-            $current = Carbon::parse($range['from']);
-            $end     = Carbon::parse($range['to']);
+            $this->info("Обработка ЧМ-{$year}");
 
-            while ($current->lte($end)) {
+            $range = $this->worldCupRanges[$year];
+            $from = Carbon::parse($range['from']);
+            $to   = Carbon::parse($range['to']);
+
+            $current = $from->copy();
+
+            while ($current->lte($to)) {
                 $date = $current->toDateString();
 
                 $response = $this->api->getFixtures([
                     'league' => $leagueId,
-                    'season' => $season,
+                    'season' => $year,
                     'from'   => $date,
                     'to'     => $date,
                 ]);
@@ -114,16 +100,16 @@ class FetchSeason extends Command
                 $data = $response->json();
                 $fixtures = $data['response'] ?? [];
                 $count = count($fixtures);
+
                 if ($count > 0) {
                     $this->line("  {$date}: {$count} матчей");
                 } else {
-                    // Нет матчей – переходим к следующему дню без дополнительных запросов
                     $current->addDay();
                     continue;
                 }
 
                 foreach ($fixtures as $matchData) {
-                    $fixture = $this->saveFixture($matchData);
+                    $fixture = $this->saveFixture($matchData, $year);
 
                     if (!$skipStatistics) {
                         $this->fetchAndSaveStatistics($fixture, $matchData['fixture']['id']);
@@ -141,10 +127,8 @@ class FetchSeason extends Command
                     }
 
                     if ($totalRequests >= $maxRequests) {
-                        
-                        // Вместо break 4:
-$this->warn("Достигнут лимит запросов ({$maxRequests}). Продолжите позже.");
-return; // или break 2; если нужно выйти из двух внешних циклов
+                        $this->warn("Достигнут лимит запросов ({$maxRequests}). Продолжите позже.");
+                        return 0;
                     }
 
                     if ($delayMs > 0) {
@@ -160,70 +144,53 @@ return; // или break 2; если нужно выйти из двух внеш
         return 0;
     }
 
-    protected function fetchLeagues(array $leagueIds)
+    /**
+     * Убедиться, что лига "World Cup" есть в таблице leagues.
+     */
+    protected function ensureWorldCupLeague(): void
     {
-        $existing = League::whereIntegerInRaw('external_id', $leagueIds)->count();
-        if ($existing < count($leagueIds)) {
+        $league = League::where('external_id', self::WORLD_CUP_LEAGUE_ID)->first();
+        if (!$league) {
+            // Запросим данные о лиге через API
             $response = $this->api->getLeagues();
             if ($response->successful()) {
                 $leagues = $response->json('response') ?? [];
-                foreach ($leagues as $data) {
-                    $id = $data['league']['id'] ?? null;
-                    if ($id && in_array($id, $leagueIds)) {
+                foreach ($leagues as $leagueData) {
+                    if (($leagueData['league']['id'] ?? null) == self::WORLD_CUP_LEAGUE_ID) {
                         League::updateOrCreate(
-                            ['external_id' => $id],
+                            ['external_id' => self::WORLD_CUP_LEAGUE_ID],
                             [
-                                'name'      => $data['league']['name'],
-                                'country'   => $data['country']['name'] ?? null,
-                                'type'      => $data['league']['type'] ?? 'league',
-                                'logo_url'  => $data['league']['logo'] ?? null,
+                                'name'      => $leagueData['league']['name'],
+                                'country'   => $leagueData['country']['name'] ?? 'World',
+                                'type'      => $leagueData['league']['type'] ?? 'cup',
+                                'logo_url'  => $leagueData['league']['logo'] ?? null,
                                 'is_active' => true,
                             ]
                         );
+                        $this->info("Добавлена лига: Чемпионат мира");
+                        break;
                     }
                 }
+            } else {
+                // Если API не отвечает, создадим минимальную запись вручную
+                League::updateOrCreate(
+                    ['external_id' => self::WORLD_CUP_LEAGUE_ID],
+                    [
+                        'name'      => 'World Cup',
+                        'country'   => 'International',
+                        'type'      => 'cup',
+                        'is_active' => true,
+                    ]
+                );
+                $this->warn("Лига 'World Cup' создана вручную (без логотипа)");
             }
         }
     }
 
-    protected function getRange(int $leagueId, int $season, ?string $from, ?string $to): ?array
-    {
-        if ($from && $to) {
-            return ['from' => $from, 'to' => $to];
-        }
-
-        $specialRanges = [
-            1 => [2022 => ['from'=>'2022-11-20','to'=>'2022-12-18']],
-            2 => [2022 => ['from'=>'2022-09-06','to'=>'2023-06-10'],
-                  2023 => ['from'=>'2023-09-19','to'=>'2024-06-01'],
-                  2024 => ['from'=>'2024-09-17','to'=>'2025-06-07'],
-                  2025 => ['from'=>'2025-09-16','to'=>'2026-06-06']],
-            3 => [2022 => ['from'=>'2022-09-08','to'=>'2023-05-31'],
-                  2023 => ['from'=>'2023-09-21','to'=>'2024-05-22'],
-                  2024 => ['from'=>'2024-09-25','to'=>'2025-05-21'],
-                  2025 => ['from'=>'2025-09-24','to'=>'2026-05-20']],
-            4 => [2024 => ['from'=>'2024-06-14','to'=>'2024-07-14']],
-            13=> [2022 => ['from'=>'2022-04-05','to'=>'2022-10-29'],
-                  2023 => ['from'=>'2023-04-04','to'=>'2023-10-28'],
-                  2024 => ['from'=>'2024-04-02','to'=>'2024-10-26'],
-                  2025 => ['from'=>'2025-04-01','to'=>'2025-10-25']],
-        ];
-
-        if (isset($specialRanges[$leagueId][$season])) {
-            return $specialRanges[$leagueId][$season];
-        }
-
-        if ($season >= 2023) {
-            return [
-                'from' => "{$season}-08-01",
-                'to'   => ($season+1)."-07-31",
-            ];
-        }
-
-        return ['from' => '2023-04-01', 'to' => '2023-07-31'];
-    }
-
-    protected function saveFixture(array $data): Fixture
+    /**
+     * Сохранить матч (адаптировано для сборных).
+     */
+    protected function saveFixture(array $data, int $season): Fixture
     {
         $fixtureInfo = $data['fixture'] ?? null;
         if (!$fixtureInfo) throw new \Exception('No fixture data');
@@ -233,14 +200,10 @@ return; // или break 2; если нужно выйти из двух внеш
         $awayTeamData = $data['teams']['away'] ?? [];
         $goals = $data['goals'] ?? [];
 
-        $league = League::updateOrCreate(
-            ['external_id' => $leagueData['id']],
-            [
-                'name'      => $leagueData['name'],
-                'country'   => $leagueData['country'] ?? null,
-                'logo_url'  => $leagueData['logo'] ?? null,
-                'is_active' => true,
-            ]
+        // Лига (должна уже существовать)
+        $league = League::firstOrCreate(
+            ['external_id' => self::WORLD_CUP_LEAGUE_ID],
+            ['name' => 'World Cup', 'country' => 'International', 'type' => 'cup']
         );
 
         $homeTeam = Team::updateOrCreate(
@@ -274,46 +237,40 @@ return; // или break 2; если нужно выйти из двух внеш
         );
     }
 
+    // === Следующие три метода полностью копируют логику из FetchSeason ===
     protected function fetchAndSaveStatistics(Fixture $fixture, int $apiFixtureId): void
     {
-        // Если уже есть xG для хозяев и гостей, вероятно, статистика уже загружена
-        if ($fixture->home_xg !== null && $fixture->away_xg !== null) {
-            // Дополнительно проверим наличие записей в match_statistics
-            if ($fixture->matchStatistics()->count() > 0) {
-                return;
-            }
+        if ($fixture->home_xg !== null && $fixture->away_xg !== null && $fixture->matchStatistics()->count() > 0) {
+            return;
         }
 
         $response = $this->api->getFixtureStatistics($apiFixtureId);
         if (!$response->successful()) return;
 
         $teamsStats = $response->json('response') ?? [];
-
         $xgHome = null; $xgAway = null;
         $posHome = null; $posAway = null;
 
         foreach ($teamsStats as $teamStats) {
             $teamId = $teamStats['team']['id'] ?? null;
             if (!$teamId) continue;
-
             $isHome = $teamId == $fixture->homeTeam?->external_id;
 
             foreach ($teamStats['statistics'] as $stat) {
                 $type = $stat['type'] ?? 'unknown';
                 $rawValue = $stat['value'] ?? null;
-
                 $cleanValue = is_numeric($rawValue) ? (float) $rawValue : (is_string($rawValue) ? (float) rtrim($rawValue, '%') : null);
 
                 if ($isHome) {
                     MatchStatistic::updateOrCreate(
-                        ['fixture_id' => $fixture->id, 'stat_type'  => $type],
+                        ['fixture_id' => $fixture->id, 'stat_type' => $type],
                         ['home_value' => $cleanValue]
                     );
                     if ($type === 'expected_goals') $xgHome = $cleanValue;
                     if ($type === 'Ball Possession') $posHome = $cleanValue;
                 } else {
                     MatchStatistic::updateOrCreate(
-                        ['fixture_id' => $fixture->id, 'stat_type'  => $type],
+                        ['fixture_id' => $fixture->id, 'stat_type' => $type],
                         ['away_value' => $cleanValue]
                     );
                     if ($type === 'expected_goals') $xgAway = $cleanValue;
@@ -332,10 +289,7 @@ return; // или break 2; если нужно выйти из двух внеш
 
     protected function fetchAndSavePrematchOdds(Fixture $fixture, int $apiFixtureId): void
     {
-        // Если уже есть коэффициенты для этого матча (хотя бы одна запись), пропускаем
-        if ($fixture->odds()->where('market', '1x2')->exists()) {
-            return;
-        }
+        if ($fixture->odds()->where('market', '1x2')->exists()) return;
 
         $response = $this->api->getOdds($apiFixtureId);
         if (!$response->successful()) return;
@@ -383,10 +337,7 @@ return; // или break 2; если нужно выйти из двух внеш
 
     protected function fetchAndSaveEvents(Fixture $fixture, int $apiFixtureId): void
     {
-        // Если уже есть события, пропускаем (проверяем хотя бы одну запись)
-        if ($fixture->matchEvents()->exists()) {
-            return;
-        }
+        if ($fixture->matchEvents()->exists()) return;
 
         $response = $this->api->getFixtureEvents($apiFixtureId);
         if (!$response->successful()) return;

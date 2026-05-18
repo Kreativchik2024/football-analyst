@@ -30,4 +30,7 @@ class Kernel extends ConsoleKernel
         // Подключаем консольные маршруты (если есть)
         require base_path('routes/console.php');
     }
+    protected $commands = [
+    \App\Console\Commands\DataAudit::class,
+];
 }

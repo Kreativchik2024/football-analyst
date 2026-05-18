@@ -1,4 +1,5 @@
 <?php
+// app/Services/ApiFootballService.php
 
 namespace App\Services;
 
@@ -20,9 +21,9 @@ class ApiFootballService
         return Http::withHeaders([
             'x-apisports-key' => $this->apiKey,
         ])
-            ->timeout(120)
+            ->timeout(30)
             ->connectTimeout(10)
-            ->retry(3, 2000)
+            ->retry(3, 1000)
             ->get($this->baseUrl . $endpoint, $params);
     }
 
@@ -48,58 +49,49 @@ class ApiFootballService
 
     public function getFixtureStatistics(int $fixtureId)
     {
-        return $this->request('/fixtures/statistics', [
-            'fixture' => $fixtureId,
-        ]);
+        return $this->request('/fixtures/statistics', ['fixture' => $fixtureId]);
     }
 
+    // Исправленный метод - принимает int
     public function getPredictions(int $fixtureId)
     {
-        return $this->request('/predictions', [
-            'fixture' => $fixtureId,
-        ]);
+        return $this->request('/predictions', ['fixture' => $fixtureId]);
     }
 
-    // Только ОДИН метод getOdds
+    // Исправленный метод - принимает int
     public function getOdds(int $fixtureId)
     {
-        return $this->request('/odds', [
-            'fixture' => $fixtureId,
-        ]);
+        return $this->request('/odds', ['fixture' => $fixtureId]);
     }
 
-  public function getBookmakers()
-{
-    return Cache::remember('api_football_bookmakers', 86400, function () {
-        $response = $this->request('/odds/bookmakers');
-        if ($response->successful()) {
-            return $response->json();       // кэшируем только массив
-        }
-        return null;
-    });
-}
+    public function getBookmakers()
+    {
+        return Cache::remember('api_football_bookmakers', 86400, function () {
+            $response = $this->request('/odds/bookmakers');
+            if ($response->successful()) {
+                return $response->json();
+            }
+            return null;
+        });
+    }
 
-    // Новый метод для событий матча
     public function getFixtureEvents(int $fixtureId)
     {
-        return $this->request('/fixtures/events', [
-            'fixture' => $fixtureId,
-        ]);
+        return $this->request('/fixtures/events', ['fixture' => $fixtureId]);
     }
+
     public function getInjuries(array $params = [])
-{
-    return $this->request('/injuries', $params);
-}
+    {
+        return $this->request('/injuries', $params);
+    }
 
-public function getLiveFixtures(array $params = [])
-{
-    return $this->request('/fixtures', array_merge(['live' => 'all'], $params));
-}
+    public function getLiveFixtures(array $params = [])
+    {
+        return $this->request('/fixtures', array_merge(['live' => 'all'], $params));
+    }
 
-public function getLiveOdds(int $fixtureId)
-{
-    return $this->request('/odds/live', ['fixture' => $fixtureId]);
-}
-
-// getFixtureStatistics уже есть, он работает и для live-матчей
+    public function getLiveOdds(int $fixtureId)
+    {
+        return $this->request('/odds/live', ['fixture' => $fixtureId]);
+    }
 }

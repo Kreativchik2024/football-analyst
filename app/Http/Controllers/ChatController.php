@@ -6,12 +6,13 @@ use App\Models\Fixture;
 use App\Models\ValueBet;
 use App\Models\News;
 use App\Models\DailyBriefing;
-use App\Services\DeepSeekService;
+// use App\Services\DeepSeekService;
 use Illuminate\Http\Request;
+use App\Services\LocalDeepSeekService;
 
 class ChatController extends Controller
 {
-    public function ask(Request $request, DeepSeekService $deepseek)
+    public function ask(Request $request, LocalDeepSeekService $deepseek)
     {
         $question = $request->input('question');
         if (!$question) {
@@ -24,7 +25,7 @@ class ChatController extends Controller
                       . "Отвечай на русском языке, кратко и по делу. "
                       . "Используй предоставленный контекст о предстоящих матчах, лучших ставках и новостях.";
 
-        $answer = $deepseek->ask($systemPrompt, $todayContext . "\n\nВопрос пользователя: " . $question);
+         $answer = $deepseek->ask($systemPrompt, $todayContext . "\n\nВопрос пользователя: " . $question);
 
         return response()->json(['answer' => $answer ?? 'Извините, я затрудняюсь ответить.']);
     }
