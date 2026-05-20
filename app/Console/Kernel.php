@@ -12,17 +12,23 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Загрузка новостей ESPN каждый час
-        $schedule->command('fetch:espn-news')->hourly();
-        
-        // Ежедневная сводка ассистента
-        $schedule->command('briefing:generate')->dailyAt('08:00');
-         $schedule->command('matches:refresh --hours=1')->everyThirtyMinutes();
-           // Загрузка предстоящих матчей на 7 дней, раз в сутки в 3:00
-    $schedule->command('fetch:upcoming --days=7 --skip-odds')->dailyAt('03:00');
-    
-    // Также можно обновлять прогнозы API‑Football (если нужны)
-    $schedule->command('fetch:predictions --days=7 --update-existing')->dailyAt('04:00');
+        // Новости ESPN каждый час
+        $schedule->command('fetch:espn-news --all-soccer')->hourly();
+
+        // Предстоящие матчи на 7 дней, раз в сутки в 3:00
+        $schedule->command('fetch:upcoming --days=7 --skip-odds')->dailyAt('03:00');
+
+        // Прогнозы API‑Football раз в сутки в 4:00
+        $schedule->command('fetch:predictions --days=7 --update-existing')->dailyAt('04:00');
+
+        // Дозагрузка статистики каждые 30 минут
+        $schedule->command('fetch:missing-details --limit=50')->everyThirtyMinutes();
+
+        // (Опционально) Ежедневная сводка ассистента
+        // $schedule->command('briefing:generate')->dailyAt('08:00');
+
+        // Обновление матчей каждые 30 минут
+        $schedule->command('matches:refresh --hours=1')->everyThirtyMinutes();
     }
 
     /**
@@ -30,13 +36,7 @@ class Kernel extends ConsoleKernel
      */
     protected function commands(): void
     {
-        // Автоматически загружаем все команды из папки Commands
         $this->load(__DIR__.'/Commands');
-
-        // Подключаем консольные маршруты (если есть)
         require base_path('routes/console.php');
     }
-    protected $commands = [
-    \App\Console\Commands\DataAudit::class,
-];
 }
