@@ -18,6 +18,11 @@ class Kernel extends ConsoleKernel
         // Ежедневная сводка ассистента
         $schedule->command('briefing:generate')->dailyAt('08:00');
          $schedule->command('matches:refresh --hours=1')->everyThirtyMinutes();
+           // Загрузка предстоящих матчей на 7 дней, раз в сутки в 3:00
+    $schedule->command('fetch:upcoming --days=7 --skip-odds')->dailyAt('03:00');
+    
+    // Также можно обновлять прогнозы API‑Football (если нужны)
+    $schedule->command('fetch:predictions --days=7 --update-existing')->dailyAt('04:00');
     }
 
     /**
