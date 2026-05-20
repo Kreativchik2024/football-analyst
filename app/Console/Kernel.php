@@ -17,6 +17,7 @@ class Kernel extends ConsoleKernel
         
         // Ежедневная сводка ассистента
         $schedule->command('briefing:generate')->dailyAt('08:00');
+         $schedule->command('matches:refresh --hours=1')->everyThirtyMinutes();
     }
 
     /**
