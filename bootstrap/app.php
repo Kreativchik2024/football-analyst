@@ -11,15 +11,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-    $middleware->alias([
-        'ai.access' => \App\Http\Middleware\CheckAiAccess::class,
-    ]);
+        $middleware->alias([
+            'ai.access' => \App\Http\Middleware\CheckAiAccess::class,
+        ]);
 
-    // Добавляем наш middleware в группу web (для всех страниц)
-    $middleware->web(append: [
-        \App\Http\Middleware\SetLocale::class,
-    ]);
-})
+        $middleware->web(append: [
+            \App\Http\Middleware\SetLocale::class,
+        ]);
+    })
 
     ->withExceptions(function (Exceptions $exceptions) {
         //

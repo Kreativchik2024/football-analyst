@@ -81,23 +81,29 @@
                 </div>
             </div>
 
-            {{-- Новости --}}
+            {{-- Новости (сетка 3x2) --}}
             <div class="card bg-white shadow-sm border-0 rounded-4 flex-grow-1 overflow-auto">
                 <div class="card-header bg-transparent border-0 pt-3 pb-1">
                     <h6 class="text-info small fw-bold mb-0">📰 Новости футбола</h6>
                 </div>
                 <div class="card-body pt-0 px-2 pb-2">
-                    @forelse($latestNews as $news)
-                        <div class="border-bottom py-2">
-                            <a href="{{ $news->url }}" target="_blank" class="text-decoration-none fw-semibold text-dark small">
-                                {{ Str::limit($news->title, 60) }}
-                            </a>
-                            <p class="text-muted mb-0" style="font-size:0.75rem;">{{ Str::limit($news->content, 100) }}</p>
-                            <div class="text-muted" style="font-size:0.7rem;">{{ $news->published_at->diffForHumans() }} | {{ $news->source }}</div>
-                        </div>
-                    @empty
-                        <p class="text-muted text-center my-2 small">Новостей пока нет</p>
-                    @endforelse
+                    <div class="row g-2">
+                        @forelse($latestNews as $news)
+                            <div class="col-md-6">
+                                <div class="card border-1 shadow-sm h-100">
+                                    <div class="card-body p-2">
+                                        <a href="{{ $news->url }}" target="_blank" class="text-decoration-none fw-semibold text-dark small d-block">
+                                            {{ Str::limit($news->title, 50) }}
+                                        </a>
+                                        <p class="text-muted mb-1 small" style="font-size:0.75rem;">{{ Str::limit($news->content, 80) }}</p>
+                                        <div class="text-muted" style="font-size:0.65rem;">{{ $news->published_at->diffForHumans() }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        @empty
+                            <p class="text-muted text-center my-2 small">Новостей пока нет</p>
+                        @endforelse
+                    </div>
                 </div>
             </div>
         </div>

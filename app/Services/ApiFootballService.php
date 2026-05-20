@@ -40,6 +40,7 @@ class ApiFootballService
         return Cache::remember($cacheKey, 86400, function () use ($params) {
             return $this->request('/teams', $params);
         });
+        
     }
 
     public function getFixtures(array $params = [])
@@ -94,4 +95,8 @@ class ApiFootballService
     {
         return $this->request('/odds/live', ['fixture' => $fixtureId]);
     }
+    public function getTeamsNoCache(array $params = [])
+{
+    return $this->request('/teams', $params);
+}
 }

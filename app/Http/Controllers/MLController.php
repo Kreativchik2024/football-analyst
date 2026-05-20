@@ -224,64 +224,61 @@ class MLController extends Controller
     /**
      * Обучение модели – возвращает полный набор признаков (включая травмы, xG историю, улучшенную форму)
      */
-    public function getTrainingData(Request $request)
-    {
-        $limit = $request->get('limit', 5000);
-        $season = $request->get('season', 2025);
+  public function getTrainingData(Request $request)
+{
+    $limit = $request->get('limit', 5000);
+    $season = $request->get('season', 2025);
 
-        $fixtures = Fixture::with(['homeTeam', 'awayTeam', 'matchStatistics', 'predictions'])
-            ->finished()
-            ->whereYear('starting_at', '>=', $season - 1)
-            ->limit($limit)
-            ->get();
+    $fixtures = Fixture::with(['homeTeam', 'awayTeam', 'matchStatistics', 'predictions'])
+        ->finished()
+        ->whereYear('starting_at', '>=', $season - 1)
+        ->limit($limit)
+        ->get();
 
-        $data = [];
-        foreach ($fixtures as $fixture) {
-            $homeForm = $this->calculateWeightedTeamForm($fixture->homeTeam, $fixture->starting_at);
-            $awayForm = $this->calculateWeightedTeamForm($fixture->awayTeam, $fixture->starting_at);
-            $stats = $fixture->matchStatistics->groupBy('stat_type');
+    $data = [];
+    foreach ($fixtures as $fixture) {
+        $home = $fixture->homeTeam;
+        $away = $fixture->awayTeam;
 
-            $homeInjuries = $this->countActiveInjuries($fixture->homeTeam->id, $fixture->starting_at);
-            $awayInjuries = $this->countActiveInjuries($fixture->awayTeam->id, $fixture->starting_at);
+        $stats = $fixture->matchStatistics->groupBy('stat_type');
+        $headToHead = $this->getHeadToHead($home, $away, $fixture->starting_at);
 
-            $homeAvgXg = $this->getAverageXg($fixture->homeTeam->id, $fixture->starting_at, 5);
-            $awayAvgXg = $this->getAverageXg($fixture->awayTeam->id, $fixture->starting_at, 5);
-
-            $headToHead = $this->getHeadToHead($fixture->homeTeam, $fixture->awayTeam, $fixture->starting_at);
-
-            $data[] = [
-                'home_elo' => $fixture->homeTeam->elo_rating ?? 1500,
-                'away_elo' => $fixture->awayTeam->elo_rating ?? 1500,
-                'home_form' => $homeForm['points_per_game'],
-                'away_form' => $awayForm['points_per_game'],
-                'home_goals_avg' => $homeForm['goals_avg'],
-                'away_goals_avg' => $awayForm['goals_avg'],
-                'home_clean_sheets_pct' => $homeForm['clean_sheets_pct'],
-                'away_clean_sheets_pct' => $awayForm['clean_sheets_pct'],
-                'home_injuries' => $homeInjuries,
-                'away_injuries' => $awayInjuries,
-                'home_avg_xg' => $homeAvgXg,
-                'away_avg_xg' => $awayAvgXg,
-                'home_xg_match' => $fixture->home_xg ?? 0,
-                'away_xg_match' => $fixture->away_xg ?? 0,
-                'home_possession' => $fixture->home_possession ?? 50,
-                'away_possession' => $fixture->away_possession ?? 50,
-                'home_shots' => $this->getStatValue($stats, 'Total Shots', 'home'),
-                'away_shots' => $this->getStatValue($stats, 'Total Shots', 'away'),
-                'home_shots_on_target' => $this->getStatValue($stats, 'Shots on Goal', 'home'),
-                'away_shots_on_target' => $this->getStatValue($stats, 'Shots on Goal', 'away'),
-                'api_prob_home' => $fixture->predictions->where('agent_type', 'api_football')->first()->home_probability ?? 0.33,
-                'api_prob_draw' => $fixture->predictions->where('agent_type', 'api_football')->first()->draw_probability ?? 0.34,
-                'api_prob_away' => $fixture->predictions->where('agent_type', 'api_football')->first()->away_probability ?? 0.33,
-                'h2h_home_wins' => $headToHead['home_wins'],
-                'h2h_draws' => $headToHead['draws'],
-                'h2h_away_wins' => $headToHead['away_wins'],
-                'result' => $this->getResult($fixture),
-            ];
-        }
-
-        return response()->json(['data' => $data]);
+        $data[] = [
+            // ELO
+            'home_elo' => $home->elo_rating ?? 1500,
+            'away_elo' => $away->elo_rating ?? 1500,
+            // Форма голов и очков (из таблицы teams)
+            'home_form_goals_scored' => $home->form_goals_scored_avg ?? 1.0,
+            'away_form_goals_scored' => $away->form_goals_scored_avg ?? 1.0,
+            'home_form_goals_conceded' => $home->form_goals_conceded_avg ?? 1.0,
+            'away_form_goals_conceded' => $away->form_goals_conceded_avg ?? 1.0,
+            'home_form_points' => $home->form_points_avg ?? 1.5,
+            'away_form_points' => $away->form_points_avg ?? 1.5,
+            // xG и possession
+            'home_xg' => $fixture->home_xg ?? 0,
+            'away_xg' => $fixture->away_xg ?? 0,
+            'home_possession' => $fixture->home_possession ?? 50,
+            'away_possession' => $fixture->away_possession ?? 50,
+            // Статистика
+            'home_shots' => $this->getStatValue($stats, 'Total Shots', 'home'),
+            'away_shots' => $this->getStatValue($stats, 'Total Shots', 'away'),
+            'home_shots_on_target' => $this->getStatValue($stats, 'Shots on Goal', 'home'),
+            'away_shots_on_target' => $this->getStatValue($stats, 'Shots on Goal', 'away'),
+            // API прогнозы
+            'api_prob_home' => $fixture->predictions->where('agent_type', 'api_football')->first()->home_probability ?? 0.33,
+            'api_prob_draw' => $fixture->predictions->where('agent_type', 'api_football')->first()->draw_probability ?? 0.34,
+            'api_prob_away' => $fixture->predictions->where('agent_type', 'api_football')->first()->away_probability ?? 0.33,
+            // H2H
+            'h2h_home_wins' => $headToHead['home_wins'],
+            'h2h_draws' => $headToHead['draws'],
+            'h2h_away_wins' => $headToHead['away_wins'],
+            // Результат
+            'result' => $this->getResult($fixture),
+        ];
     }
+
+    return response()->json(['data' => $data]);
+}
 
     public function status()
     {

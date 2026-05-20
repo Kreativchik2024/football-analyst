@@ -4,21 +4,23 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'DeepOdds — AI-аналитика футбольных ставок')</title>
-
+    <title>@yield('title', 'DeepOdds')</title>
+    
+    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    @vite('resources/css/app.css')
     @stack('styles')
 </head>
-<body class="font-sans antialiased d-flex flex-column min-vh-100" style="background: #f8f9fa;">
-    <x-chat-widget />
+<body>
     <x-header />
 
-    <main class="flex-grow-1 d-flex">
+    <main>
         @yield('content')
     </main>
 
     <x-footer />
 
+    <!-- Bootstrap 5 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     @stack('scripts')
 </body>
