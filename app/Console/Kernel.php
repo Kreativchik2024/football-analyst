@@ -28,7 +28,10 @@ class Kernel extends ConsoleKernel
         // $schedule->command('briefing:generate')->dailyAt('08:00');
 
         // Обновление матчей каждые 30 минут
-        $schedule->command('matches:refresh --hours=1')->everyThirtyMinutes();
+         $schedule->command('matches:recent-hour --skip-odds')
+             ->hourly()
+             ->withoutOverlapping()
+             ->runInBackground();
     }
 
     /**
